@@ -6,12 +6,23 @@ import * as faceapi from 'face-api.js';
  */
 export const loadFaceDetectionModels = async (): Promise<void> => {
   try {
-    await Promise.all([
-      faceapi.nets.tinyFaceDetector.loadFromUri('/models'),
-      faceapi.nets.faceLandmark68Net.loadFromUri('/models')
-    ]);
-    console.log('Face detection models loaded');
-    return Promise.resolve();
+    // Pre-check if models are already loaded
+    if (faceapi.nets.tinyFaceDetector.isLoaded && faceapi.nets.faceLandmark68Net.isLoaded) {
+      console.log('Face detection models already loaded');
+      return Promise.resolve();
+    }
+    
+    // Ensure clean load by unloading first if partially loaded
+    await faceapi.nets.tinyFaceDetector.load('/models');
+    await faceapi.nets.faceLandmark68Net.load('/models');
+    
+    // Verify models loaded successfully
+    if (faceapi.nets.tinyFaceDetector.isLoaded && faceapi.nets.faceLandmark68Net.isLoaded) {
+      console.log('Face detection models loaded successfully');
+      return Promise.resolve();
+    } else {
+      return Promise.reject(new Error('Models did not load correctly'));
+    }
   } catch (error) {
     console.error('Error loading face detection models:', error);
     return Promise.reject(error);

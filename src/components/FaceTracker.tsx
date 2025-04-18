@@ -2,6 +2,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import * as faceapi from 'face-api.js';
 import { useToast } from "@/components/ui/use-toast";
+import { loadFaceDetectionModels } from '@/utils/faceUtils';
 
 interface FaceTrackerProps {
   videoRef: HTMLVideoElement | null;
@@ -20,11 +21,9 @@ const FaceTracker: React.FC<FaceTrackerProps> = ({
 
   // Load face-api.js models
   useEffect(() => {
-    const loadModels = async () => {
+    const initModels = async () => {
       try {
-        // Load models from public folder
-        await faceapi.nets.tinyFaceDetector.loadFromUri('/models');
-        await faceapi.nets.faceLandmark68Net.loadFromUri('/models');
+        await loadFaceDetectionModels();
         setModelsLoaded(true);
         toast({
           title: "Face Models Loaded",
@@ -40,7 +39,7 @@ const FaceTracker: React.FC<FaceTrackerProps> = ({
       }
     };
 
-    loadModels();
+    initModels();
 
     // Clean up animation frame on unmount
     return () => {
@@ -59,15 +58,25 @@ const FaceTracker: React.FC<FaceTrackerProps> = ({
 
     const detectFace = async () => {
       if (videoRef && videoRef.readyState === 4) {
-        // Detect faces
-        const detection = await faceapi
-          .detectSingleFace(videoRef, new faceapi.TinyFaceDetectorOptions())
-          .withFaceLandmarks();
+        try {
+          // Detect faces with lower memory footprint options
+          const options = new faceapi.TinyFaceDetectorOptions({ 
+            inputSize: 320,
+            scoreThreshold: 0.5
+          });
+          
+          const detection = await faceapi
+            .detectSingleFace(videoRef, options)
+            .withFaceLandmarks();
 
-        if (detection) {
-          // Extract face landmarks and send to parent component
-          onFaceLandmarks(detection.landmarks);
-        } else {
+          if (detection) {
+            // Extract face landmarks and send to parent component
+            onFaceLandmarks(detection.landmarks);
+          } else {
+            onFaceLandmarks(null);
+          }
+        } catch (error) {
+          console.error("Face detection error:", error);
           onFaceLandmarks(null);
         }
       }

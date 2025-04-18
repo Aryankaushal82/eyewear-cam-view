@@ -1,5 +1,5 @@
 
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { useGLTF } from '@react-three/drei';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
@@ -10,20 +10,105 @@ interface EyewearModelProps {
 }
 
 const EyewearModel: React.FC<EyewearModelProps> = ({ faceLandmarks }) => {
-  const { scene } = useGLTF('/src/assets/eyewear.gltf');
+  const [modelError, setModelError] = useState<string | null>(null);
   const modelRef = useRef<THREE.Group>(null);
   const targetPosition = useRef(new THREE.Vector3(0, 0, -0.5));
   const targetRotation = useRef(new THREE.Euler(0, 0, 0));
   
-  // Get the camera from Three.js context
+  // Instead of loading external GLTF, create a simple glasses mesh
   const { camera } = useThree();
   
-  // Clone the model to avoid modifying the original
+  // Create simple glasses mesh on mount
   useEffect(() => {
     if (modelRef.current) {
-      // Apply initial position and scale
-      modelRef.current.position.set(0, 0, -0.5);
-      modelRef.current.scale.set(0.1, 0.1, 0.1);
+      try {
+        // Clear any previous children
+        while (modelRef.current.children.length > 0) {
+          modelRef.current.remove(modelRef.current.children[0]);
+        }
+        
+        // Create simple glasses frame
+        const frameMaterial = new THREE.MeshStandardMaterial({ 
+          color: 0x222222, 
+          roughness: 0.5, 
+          metalness: 0.8 
+        });
+        
+        // Create left lens frame
+        const leftFrame = new THREE.Mesh(
+          new THREE.TorusGeometry(0.3, 0.05, 16, 32),
+          frameMaterial
+        );
+        leftFrame.position.set(-0.4, 0, 0);
+        leftFrame.rotation.x = Math.PI / 2;
+        
+        // Create right lens frame
+        const rightFrame = new THREE.Mesh(
+          new THREE.TorusGeometry(0.3, 0.05, 16, 32),
+          frameMaterial
+        );
+        rightFrame.position.set(0.4, 0, 0);
+        rightFrame.rotation.x = Math.PI / 2;
+        
+        // Create bridge
+        const bridge = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.03, 0.03, 0.8, 8),
+          frameMaterial
+        );
+        bridge.rotation.z = Math.PI / 2;
+        
+        // Add lenses
+        const lensMaterial = new THREE.MeshPhysicalMaterial({
+          color: 0x6688cc,
+          transmission: 0.9,
+          opacity: 0.3,
+          transparent: true,
+          roughness: 0.1
+        });
+        
+        const leftLens = new THREE.Mesh(
+          new THREE.CircleGeometry(0.25, 32),
+          lensMaterial
+        );
+        leftLens.position.set(-0.4, 0, 0.02);
+        
+        const rightLens = new THREE.Mesh(
+          new THREE.CircleGeometry(0.25, 32),
+          lensMaterial
+        );
+        rightLens.position.set(0.4, 0, 0.02);
+        
+        // Add temples (arms)
+        const leftTemple = new THREE.Mesh(
+          new THREE.BoxGeometry(0.6, 0.04, 0.04),
+          frameMaterial
+        );
+        leftTemple.position.set(-0.7, 0, -0.1);
+        leftTemple.rotation.y = Math.PI / 4;
+        
+        const rightTemple = new THREE.Mesh(
+          new THREE.BoxGeometry(0.6, 0.04, 0.04),
+          frameMaterial
+        );
+        rightTemple.position.set(0.7, 0, -0.1);
+        rightTemple.rotation.y = -Math.PI / 4;
+        
+        // Add all parts to the group
+        modelRef.current.add(leftFrame);
+        modelRef.current.add(rightFrame);
+        modelRef.current.add(bridge);
+        modelRef.current.add(leftLens);
+        modelRef.current.add(rightLens);
+        modelRef.current.add(leftTemple);
+        modelRef.current.add(rightTemple);
+        
+        // Apply initial position and scale
+        modelRef.current.position.set(0, 0, -0.5);
+        modelRef.current.scale.set(0.5, 0.5, 0.5);
+      } catch (error) {
+        console.error("Error creating glasses model:", error);
+        setModelError("Failed to create glasses model");
+      }
     }
   }, []);
 
@@ -53,8 +138,8 @@ const EyewearModel: React.FC<EyewearModelProps> = ({ faceLandmarks }) => {
         );
         
         // Normalize coordinates to WebGL space (-1 to 1)
-        const normalizedX = (eyeCenter.x - 0.5) * 2;
-        const normalizedY = -(eyeCenter.y - 0.5) * 2;
+        const normalizedX = (eyeCenter.x / window.innerWidth - 0.5) * 2;
+        const normalizedY = -(eyeCenter.y / window.innerHeight - 0.5) * 2;
         
         // Calculate face rotation based on eye and nose positions
         const faceAngle = Math.atan2(
@@ -76,18 +161,19 @@ const EyewearModel: React.FC<EyewearModelProps> = ({ faceLandmarks }) => {
         );
         
         // Calculate scale based on distance between eyes
-        const scale = Math.max(0.05, eyeDistance * 0.0035);
+        const scale = Math.max(0.2, eyeDistance * 0.0035);
         
         // Apply smooth interpolation to model position, rotation and scale
         modelRef.current.position.lerp(targetPosition.current, 0.1);
         
-        // Smoothly interpolate rotation (Euler angles don't support lerp)
+        // Smoothly interpolate rotation
         modelRef.current.rotation.x += (targetRotation.current.x - modelRef.current.rotation.x) * 0.1;
         modelRef.current.rotation.y += (targetRotation.current.y - modelRef.current.rotation.y) * 0.1;
         modelRef.current.rotation.z += (targetRotation.current.z - modelRef.current.rotation.z) * 0.1;
         
         // Smoothly interpolate scale
-        modelRef.current.scale.lerp(new THREE.Vector3(scale, scale, scale), 0.1);
+        const targetScale = new THREE.Vector3(scale, scale, scale);
+        modelRef.current.scale.lerp(targetScale, 0.1);
       }
     } else {
       // Reset to default position when no face is detected
@@ -103,16 +189,15 @@ const EyewearModel: React.FC<EyewearModelProps> = ({ faceLandmarks }) => {
     const sumX = points.reduce((sum, point) => sum + point.x, 0);
     const sumY = points.reduce((sum, point) => sum + point.y, 0);
     return { 
-      x: sumX / points.length / window.innerWidth,
-      y: sumY / points.length / window.innerHeight
+      x: sumX / points.length,
+      y: sumY / points.length
     };
   };
   
   return (
-    <primitive 
-      ref={modelRef} 
-      object={scene.clone()} 
-    />
+    <group ref={modelRef}>
+      {/* The glasses will be created programmatically */}
+    </group>
   );
 };
 
